@@ -58,14 +58,6 @@ with open(CONFIG_FILE) as f:
 
 model_v = config["model_version"]
 
-# Log slurm job details
-print("===================================")
-print(f"Model version: {model_v}")
-print(f"Host: {platform.node()}")
-print(f"SLURM_JOB_ID: {os.getenv('SLURM_JOB_ID')}")
-print(f"Model device: {model.device}")
-print("===================================")
-
 # Set random seed
 #NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging  #TODO: Actually do this if needed!
 torch.manual_seed(0)
@@ -303,15 +295,22 @@ except:  # if wandb.init fails, don't use wandb logging
     print("failed to create wandb session. wandb session will be None")
     wandb_session = None
 
+# Log slurm job details
+print("===================================")
+print(f"Model version: {model_v}")
+print(f"Host: {platform.node()}")
+print(f"SLURM_JOB_ID: {os.getenv('SLURM_JOB_ID')}")
+print(f"Model device: {model.device}")
+print("===================================")
+
 # Train model
-#TODO: Figure out how to get this running properly on Polar CPU, not just on my 'local' Polar node
 model.train(
     balanced_train_df,
     val_df,
-    steps=100,  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
-    batch_size=16,  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
+    steps=config["steps"],  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
+    batch_size=config["batch_size"],  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
     log_interval=100,  # log progress every 100 batches
-    num_workers=12,  # parallelized cpu tasks for preprocessing
+    num_workers=config["num_workers"],  # parallelized cpu tasks for preprocessing
     wandb_session=wandb_session,
     save_interval=1,  # save checkpoint every 10 epochs
     save_path=model_save_dir,  # location to save checkpoints
