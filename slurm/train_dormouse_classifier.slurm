@@ -16,7 +16,7 @@ conda activate dormouse-classifier
 # -----------------------------
 # Move to project directory
 # -----------------------------
-cd /mnt/zt01/your/project/path
+cd /gpfs01/home/isorus/hazel-dormouse-classifier/
 
 # Ensure log dir exists
 mkdir -p logs
