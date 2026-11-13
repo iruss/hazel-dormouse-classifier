@@ -248,7 +248,12 @@ model.preprocessor = my_preprocessor
 # Create folder to save data and model in
 model_save_dir = Path("model_training_checkpoints/model_" + model_v)
 
-os.mkdir(model_save_dir)
+if model_save_dir.exists():
+    raise RuntimeError(
+        f"{model_save_dir} already exists"
+    )
+
+model_save_dir.mkdir(parents=True)
 
 # Save model metadata and config file
 metadata = {
