@@ -1,5 +1,5 @@
 # Update model version here before running
-model_v = "v33"
+model_v = "v34"  #TODO: Find an automated way to document model versions
 
 # OpenSoundscape imports
 from opensoundscape import Audio, Spectrogram
@@ -35,8 +35,20 @@ import random
 from matplotlib import pyplot as plt
 from dotenv import load_dotenv
 
+# Debugging
+import pdb
+
+# Consider silencing warnings from opensoundscape caused by old pandas version, once everything's working okay
+#import warnings
+#
+#warnings.filterwarnings(
+#    "ignore",
+#    category=FutureWarning,
+#    module="opensoundscape"
+#)
+
 # Set random seed
-#NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging
+#NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging  #TODO: Actually do this if needed!
 torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
@@ -49,6 +61,7 @@ all_sample_dirs = os.getenv('all_sample_dirs')
 
 # Define function to get .txt file names from comma-separated list of directories
 def list_files(dirs, ext):
+  #TODO: Pretty sure this is over-engineered, does all_sample_dirs even need to be a list? Could just recursively get files within selections/
     
     # Split directories into separate file paths where there are multiple
     dirs_list = dirs.split(",")
@@ -122,12 +135,12 @@ train_df.set_index(['file', 'start_time', 'end_time'], inplace=True)
 # upsample positive samples and downsample 'empty' clips to make them less overrepresented
 # The downsampling will also make model training faster
 balanced_train_df = resample(train_df, n_samples_per_class=1000, 
-                             n_samples_without_labels=5000, 
+                             n_samples_without_labels=5000,  #TODO: Check why this doesn't currently include any bat clips
                              random_state=0)
 
 # Initialise model with resnet18 architecture
 classes = clip_labels.columns
-model = cnn.CNN("resnet18", classes, sample_duration=1.0)
+model = cnn.CNN("resnet18", classes, sample_duration=1.0, sample_rate = 192000)
 
 # Use modified loss function, recommended for multi-class model
 use_resample_loss(model, train_df=balanced_train_df)
@@ -144,16 +157,21 @@ background_df = background_df[background_df['hdor_all'] == False]
 background_df.set_index('file', inplace=True)
 background_df.drop(columns=['start_time', 'end_time'], inplace=True)
 
-# Initialise preprocessor with overlay df containing background noise from Calke Abbey recordings
-my_preprocessor = SpectrogramPreprocessor(sample_duration=1, overlay_df=background_df)
+# Initialise preprocessor with df of overlay samples containing background noise from Calke Abbey recordings
+#TODO: Consider explicitly specifying output width and height for spectrograms here, otherwise output will use original spectrogram dimensions
+#TODO: Looks like I could set bandpass_range here instead of below, to save a line of code?
+#TODO: If wanting to replicate prev results, may need to use use_legacy_spectrogram=True. Option added May 2026 so would presumably apply to masters work summer 2025.
+my_preprocessor = SpectrogramPreprocessor(sample_duration=1, sample_rate=192000, overlay_samples=background_df)
+
+#TODO: Need to review the whole set of augmentations, the list of default actions for SpectrogramPreprocessor seems to have changed
 
 # Remove step to add noise
 # Random noise can have a detrimental effect on model performance, esp where SNR is low (MacIsaac et al., 2024)
-my_preprocessor.remove_action("add_noise")
+my_preprocessor.remove_action("adaptive_random_noise")
 
 # Remove random affine transformations
 # These include rotation and mirroring (Mumuni & Mumuni, 2022) which are likely to distort vocalisations beyond their naturally occurring characteristics, producing unrealistic training data
-my_preprocessor.remove_action("random_affine")
+#my_preprocessor.remove_action("random_affine")  # removed from SpectrogramPreprocessor's default actions list in OpenSoundscape 0.13.0
 
 # Remove random trim audio step as I want all clips to have the same length
 my_preprocessor.remove_action("random_trim_audio")
@@ -163,7 +181,8 @@ my_preprocessor.remove_action("random_trim_audio")
 my_preprocessor.remove_action("rescale")
 
 # Resample all audio to the same sample rate as the Calke Abbey AudioMoths (192kHz)
-my_preprocessor.pipeline.load_audio.set(sample_rate=192000)
+#TODO: Check if still needed as there's now an option to specify this when initialising preprocessor
+#my_preprocessor.pipeline.load_audio.set(sample_rate=192000)
 
 # Set min and max frequency to include ultrasonic range (up to 60kHz)
 # Choosing not to exclude sub-ultrasonic frequencies. Want to include bird songs due to harmonics potentially causing confusion.
@@ -229,12 +248,13 @@ except:  # if wandb.init fails, don't use wandb logging
     print("failed to create wandb session. wandb session will be None")
     wandb_session = None
 
-    # Train model
+# Train model
+#TODO: Figure out how to get this running properly on Polar CPU, not just on my 'local' Polar node
 model.train(
     balanced_train_df,
     val_df,
-    epochs=50,
-    batch_size=16,
+    steps=100,  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
+    batch_size=16,  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
     log_interval=100,  # log progress every 100 batches
     num_workers=12,  # parallelized cpu tasks for preprocessing
     wandb_session=wandb_session,
