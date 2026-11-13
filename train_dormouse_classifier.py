@@ -1,6 +1,3 @@
-# Update model version here before running
-model_v = "v34"  #TODO: Find an automated way to document model versions
-
 # OpenSoundscape imports
 from opensoundscape import Audio, Spectrogram
 from opensoundscape.annotations import BoxedAnnotations
@@ -34,6 +31,12 @@ import wandb
 import random
 from matplotlib import pyplot as plt
 from dotenv import load_dotenv
+import yaml
+import json
+import platform
+import subprocess
+from datetime import datetime
+import shutil
 
 # Debugging
 import pdb
@@ -46,6 +49,22 @@ import pdb
 #    category=FutureWarning,
 #    module="opensoundscape"
 #)
+
+# Get configs for relevant model version
+CONFIG_FILE = "configs/dev001.yaml"
+
+with open(CONFIG_FILE) as f:
+    config = yaml.safe_load(f)
+
+model_v = config["model_version"]
+
+# Log slurm job details
+print("===================================")
+print(f"Model version: {model_v}")
+print(f"Host: {platform.node()}")
+print(f"SLURM_JOB_ID: {os.getenv('SLURM_JOB_ID')}")
+print(f"Model device: {model.device}")
+print("===================================")
 
 # Set random seed
 #NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging  #TODO: Actually do this if needed!
@@ -230,6 +249,37 @@ model.preprocessor = my_preprocessor
 model_save_dir = Path("model_training_checkpoints/model_" + model_v)
 
 os.mkdir(model_save_dir)
+
+# Save model metadata and config file
+metadata = {
+    "timestamp": datetime.now().isoformat(),
+    "model_version": model_v,
+    "config_file": CONFIG_FILE,
+    "python_version": platform.python_version(),
+    "torch_version": torch.__version__,
+    "random_seed": config["random_seed"],
+    "hostname": platform.node(),
+    "slurm_job_id": os.getenv("SLURM_JOB_ID"),
+}
+
+try:
+    metadata["git_commit"] = (
+        subprocess.check_output(
+            ["git", "rev-parse", "HEAD"]
+        )
+        .decode()
+        .strip()
+    )
+except:
+    metadata["git_commit"] = None
+    
+with open(model_save_dir / "metadata.json", "w") as f:
+    json.dump(metadata, f, indent=2)
+
+shutil.copy(
+    CONFIG_FILE,
+    model_save_dir / Path(CONFIG_FILE).name
+)
 
 # Save train and val datasets to csv
 train_df.to_csv("model_training_checkpoints/model_" + model_v + "/train_df_" + model_v + ".csv")
