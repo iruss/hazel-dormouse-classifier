@@ -10,8 +10,11 @@
 # -----------------------------
 # Activate environment
 # -----------------------------
-source ~/.bashrc
+source ${HOME}/miniforge3/etc/profile.d/conda.sh
 conda activate dormouse-classifier
+
+echo "Python: $(which python)"
+echo "Conda env: $CONDA_DEFAULT_ENV"
 
 # -----------------------------
 # Move to project directory
