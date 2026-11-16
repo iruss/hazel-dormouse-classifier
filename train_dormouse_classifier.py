@@ -287,8 +287,8 @@ val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model
 try:
     wandb.login()
     wandb_session = wandb.init(
-        entity="iissy-ukceh-uk-centre-for-ecology-hydrology",  # replace with your entity/group name
-        project="hazel-dormouse-classifier",
+        entity="issy-ukceh-uk-centre-for-ecology-hydrology",  # replace with your entity/group name
+        project="dormouse-classifier",
         name="Train CNN " + model_v,
     )
 except:  # if wandb.init fails, don't use wandb logging
