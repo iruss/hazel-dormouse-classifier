@@ -287,7 +287,7 @@ val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model
 try:
     wandb.login()
     wandb_session = wandb.init(
-        entity="isobel-russ-ucl",  # replace with your entity/group name
+        entity="iissy-ukceh-uk-centre-for-ecology-hydrology",  # replace with your entity/group name
         project="hazel-dormouse-classifier",
         name="Train CNN " + model_v,
     )
@@ -309,7 +309,7 @@ model.train(
     val_df,
     steps=config["steps"],  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
     batch_size=config["batch_size"],  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
-    log_interval=100,  # log progress every 100 batches
+    log_interval=10,  # log progress every 100 batches
     num_workers=config["num_workers"],  # parallelized cpu tasks for preprocessing
     wandb_session=wandb_session,
     save_interval=1,  # save checkpoint every 10 epochs
