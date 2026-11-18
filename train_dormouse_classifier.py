@@ -306,7 +306,7 @@ try:
         entity="issy-ukceh-uk-centre-for-ecology-hydrology",
         project="dormouse-classifier",
         name=f"{config['model_version']}_{config['run_name']}",
-        notes=config['run_description'],
+        notes=config["run_description"],
         config=config,
         tags=[
             config["model_version"],
@@ -335,10 +335,10 @@ model.train(
     val_df,
     steps=config["steps"],  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
     batch_size=config["batch_size"],  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
-    log_interval=10,
-    validation_interval=10, #TODO: Review validation interval - frequent enough to find best model, but not so frequent that it's overkill
+    log_interval=config["log_interval"],
+    validation_interval=config["validation_interval"],
     num_workers=config["num_workers"],
     wandb_session=wandb_session,
-    save_interval=1,
+    save_interval=config["save_interval"],
     save_path=model_save_dir,
 )
