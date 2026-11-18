@@ -64,10 +64,14 @@ torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
 
-# Get selection table file paths
-# Load local file paths from .env file and create variables
+#===================================================================
+#  Load data  ======================================================
+#===================================================================
+
+# Load filepaths and credentials from .env
 load_dotenv()
 
+# Get selection table file paths
 all_sample_dirs = os.getenv('all_sample_dirs')
 
 # Define function to get .txt file names from comma-separated list of directories
@@ -94,6 +98,10 @@ labelled_audio = BoxedAnnotations.from_raven_files(
     sorted(annotations), annotation_column="Annotation", audio_files = sorted(audio)
 )
 
+#===================================================================
+#  Create labels for dormouse calls  ===============================
+#===================================================================
+
 # Make a separate copy of labelled audio to filter out non-dormouse annotations before tidying up annotation column
 labelled_audio_hdor = copy.deepcopy(labelled_audio)
 labelled_audio_hdor.df = labelled_audio_hdor.df[labelled_audio_hdor.df['annotation'].str.startswith('hdor')].copy()
@@ -114,13 +122,13 @@ min_label_overlap = 0.01 #0.25  # Arch calls are ~0.01-0.29s long (avg 0.027s) -
 min_label_fraction = 0.5 #0.5  # With 0.5s each annotated call should appear in at least one clip
 # calls_of_interest = ["hdor", "hdor_arch", "hdor_asc", "hdor_wig"]
 
-# Create dataframe of one-hot labels
+# Create dataframe of multi-hot encoded labels
 clip_labels = labelled_audio_hdor.clip_labels(
     clip_duration = clip_duration,
     clip_overlap = clip_overlap,
     min_label_overlap = min_label_overlap,
     min_label_fraction = min_label_fraction,
-    # class_subset = calls_of_interest,  #NOTE: Optional - including for now as example code, but currently includes all as data is already filtered to hdor
+    # class_subset = calls_of_interest,  #NOTE: Optional - including for now as example code, but currently includes all as data is already filtered to all hdor call types
     final_clip = None  # Where length of clip doesn't divide by 1s, discards the final <1s clip
 )
 
@@ -128,7 +136,9 @@ clip_labels = labelled_audio_hdor.clip_labels(
 clip_labels['hdor_all'] = (clip_labels.hdor | clip_labels.hdor_arch | clip_labels.hdor_asc | clip_labels.hdor_wig)
 clip_labels.drop(['hdor', 'hdor_wig'], axis=1, inplace = True)
 
-# Split data into train and test
+#===================================================================
+#  Split data into train and test  =================================
+#===================================================================
 
 # Make indices into columns for easier manipulation
 clip_labels_reset_ind = clip_labels.reset_index()
@@ -149,6 +159,10 @@ balanced_train_df = resample(train_df, n_samples_per_class=1000,
                              n_samples_without_labels=5000,  #TODO: Check why this doesn't currently include any bat clips
                              random_state=0)
 
+#===================================================================
+#  Create model architecture  ======================================
+#===================================================================
+
 # Initialise model with resnet18 architecture
 classes = clip_labels.columns
 model = cnn.CNN("resnet18", classes, sample_duration=1.0, sample_rate = 192000)
@@ -159,9 +173,7 @@ use_resample_loss(model, train_df=balanced_train_df)
 # Freeze feature extractor so I'm only training the classification head, to prevent over-fitting
 # model.freeze_feature_extractor()
 
-# Customise preprocessor pipeline
-
-# Get dataframe containing only non-dormouse Calke Abbey clips, with file as the only index
+# Get background noise dataframe containing only non-dormouse Calke Abbey clips, with file as the only index
 background_df = clip_labels.reset_index()
 background_df = background_df[background_df['file'].str.contains("CalkeAbbey")]
 background_df = background_df[background_df['hdor_all'] == False]
@@ -237,6 +249,10 @@ my_preprocessor.insert_action(
 # Replace default preprocessor with my preprocessor
 model.preprocessor = my_preprocessor
 
+#===================================================================
+#  Save data/metadata and set up logging  ==========================
+#===================================================================
+
 # Create folder to save data and model in
 model_save_dir = Path("model_training_checkpoints/model_" + model_v)
 
@@ -246,6 +262,11 @@ if model_save_dir.exists():
     )
 
 model_save_dir.mkdir(parents=True)
+
+# Save train and val datasets to csv
+train_df.to_csv("model_training_checkpoints/model_" + model_v + "/train_df_" + model_v + ".csv")
+balanced_train_df.to_csv("model_training_checkpoints/model_" + model_v + "/balanced_train_df_" + model_v + ".csv")
+val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model_v + ".csv")
 
 # Save model metadata and config file
 metadata = {
@@ -278,16 +299,11 @@ shutil.copy(
     model_save_dir / Path(CONFIG_FILE).name
 )
 
-# Save train and val datasets to csv
-train_df.to_csv("model_training_checkpoints/model_" + model_v + "/train_df_" + model_v + ".csv")
-balanced_train_df.to_csv("model_training_checkpoints/model_" + model_v + "/balanced_train_df_" + model_v + ".csv")
-val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model_v + ".csv")
-
 # Set up Weights and Biases model logging
 try:
     wandb.login()
     wandb_session = wandb.init(
-        entity="issy-ukceh-uk-centre-for-ecology-hydrology",  # replace with your entity/group name
+        entity="issy-ukceh-uk-centre-for-ecology-hydrology",
         project="dormouse-classifier",
         name="Train CNN " + model_v,
     )
@@ -303,6 +319,10 @@ print(f"SLURM_JOB_ID: {os.getenv('SLURM_JOB_ID')}")
 print(f"Model device: {model.device}")
 print("===================================")
 
+#===================================================================
+#  Train the model  ================================================
+#===================================================================
+
 # Train model
 model.train(
     balanced_train_df,
@@ -311,8 +331,8 @@ model.train(
     batch_size=config["batch_size"],  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
     log_interval=10,
     validation_interval=10, #TODO: Review validation interval - frequent enough to find best model, but not so frequent that it's overkill
-    num_workers=config["num_workers"],  # parallelized cpu tasks for preprocessing
+    num_workers=config["num_workers"],
     wandb_session=wandb_session,
-    save_interval=1,  # save checkpoint every 10 epochs
-    save_path=model_save_dir,  # location to save checkpoints
+    save_interval=1,
+    save_path=model_save_dir,
 )
