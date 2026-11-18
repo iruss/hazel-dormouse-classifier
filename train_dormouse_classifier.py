@@ -305,7 +305,13 @@ try:
     wandb_session = wandb.init(
         entity="issy-ukceh-uk-centre-for-ecology-hydrology",
         project="dormouse-classifier",
-        name="Train CNN " + model_v,
+        name=f"{config['model_version']}_{config['run_name']}",
+        notes=config['run_description'],
+        config=config,
+        tags=[
+            config["model_version"],
+            "baseline"
+        ]
     )
 except Exception as e:
     print(f"Failed to initialise W&B, detailed logging will not be available: {e}")
