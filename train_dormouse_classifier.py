@@ -307,8 +307,8 @@ try:
         project="dormouse-classifier",
         name="Train CNN " + model_v,
     )
-except:  # if wandb.init fails, don't use wandb logging
-    print("failed to create wandb session. wandb session will be None")
+except Exception as e:
+    print(f"Failed to initialise W&B, detailed logging will not be available: {e}")
     wandb_session = None
 
 # Log slurm job details
