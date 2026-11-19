@@ -1,0 +1,13 @@
+model_version: DEV003
+run_name: test_fixes_before_full_baseline_run
+run_description: >
+  Test whether training is faster with num_workers = 4 or 8.
+  cpus-per-task will be kept at 8 for this run.
+
+steps: 101 # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
+batch_size: 16
+num_workers: 4
+log_interval: 10
+validation_interval: 10
+save_interval: 10
+random_seed: 0
