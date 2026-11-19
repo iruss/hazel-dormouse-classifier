@@ -1,5 +1,5 @@
 model_version: DEV003
-run_name: test_fixes_before_full_baseline_run
+run_name: test_num_workers
 run_description: >
   Test whether training is faster with num_workers = 4 or 8.
   cpus-per-task will be kept at 8 for this run.
