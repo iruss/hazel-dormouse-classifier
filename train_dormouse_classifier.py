@@ -52,7 +52,20 @@ import pdb
 #)
 
 #===================================================================
-#  Get configs for this training run  ================================
+#  Helper functions  ===============================================
+#===================================================================
+
+def list_files(parent_dir, ext):
+    ext = ext.lower().lstrip(".")
+
+    return sorted(
+        str(file)  # convert to string for compatibility with existing downstream code
+        for file in Path(parent_dir).rglob("*")
+        if file.is_file() and file.suffix.lower() == f".{ext}"
+    )
+
+#===================================================================
+#  Get configs for this training run  ==============================
 #===================================================================
 
 # Take in config filepath as a command line argument
@@ -89,26 +102,13 @@ np.random.seed(random_seed)
 load_dotenv()
 
 # Get selection table file paths
-all_sample_dirs = os.getenv('all_sample_dirs')
-
-# Define function to get .txt file names from comma-separated list of directories
-def list_files(dirs, ext):
-  #TODO: Pretty sure this is over-engineered, does all_sample_dirs even need to be a list? Could just recursively get files within selections/
-    
-    # Split directories into separate file paths where there are multiple
-    dirs_list = dirs.split(",")
-
-    # Get list of relevant file paths from all specified folders
-    file_paths = [file for x in dirs_list for file in glob.glob(f"{x}/*{ext}")]
-
-    # Return list
-    return file_paths
+annotated_data_dir = os.getenv('annotated_data_dir')
 
 # Get list of selection table files
-annotations = list_files(all_sample_dirs, ext='.txt')
+annotations = list_files(annotated_data_dir, ext='.txt')
 
 # Get list of audio files
-audio = list_files(all_sample_dirs, ext='.WAV') + list_files(all_sample_dirs, ext='.wav')
+audio = list_files(annotated_data_dir, ext='.wav')
 
 # Load annotated audio
 labelled_audio = BoxedAnnotations.from_raven_files(
