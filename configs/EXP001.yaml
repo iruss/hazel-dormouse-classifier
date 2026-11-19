@@ -8,11 +8,13 @@ run_description: >
   comparison before making experimental changes to the model hyperparameters.
   No intentional changes to architecture, data, or training procedure.
 
-steps: 25001 # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
-batch_size: 16
-num_workers: 8
-log_interval: 100
-validation_interval: 500
-save_interval: 5000
+tags:
+  - baseline
 
+steps: 25001  # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
+batch_size: 16
+num_workers: 16
+log_interval: 100
+validation_interval: 500  # Equivalent to 1 epoch given 8,000 training samples and batch size of 16
+save_interval: 5000
 random_seed: 0
