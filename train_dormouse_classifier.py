@@ -271,7 +271,7 @@ model.preprocessor = my_preprocessor
 #===================================================================
 
 # Create folder to save data and model in
-model_save_dir = Path("model_training_checkpoints/model_" + model_v)
+model_save_dir = Path("model_training_checkpoints/" + model_v)
 
 if model_save_dir.exists():
     raise RuntimeError(
@@ -281,9 +281,9 @@ if model_save_dir.exists():
 model_save_dir.mkdir(parents=True)
 
 # Save train and val datasets to csv
-train_df.to_csv("model_training_checkpoints/model_" + model_v + "/train_df_" + model_v + ".csv")
-balanced_train_df.to_csv("model_training_checkpoints/model_" + model_v + "/balanced_train_df_" + model_v + ".csv")
-val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model_v + ".csv")
+train_df.to_csv("model_training_checkpoints/" + model_v + "/train_df_" + model_v + ".csv")
+balanced_train_df.to_csv("model_training_checkpoints/" + model_v + "/balanced_train_df_" + model_v + ".csv")
+val_df.to_csv("model_training_checkpoints/" + model_v + "/val_df_" + model_v + ".csv")
 
 # Save model metadata and config file
 metadata = {
