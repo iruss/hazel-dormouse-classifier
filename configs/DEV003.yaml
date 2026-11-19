@@ -4,6 +4,9 @@ run_description: >
   Test whether training is faster with num_workers = 4 or 8.
   cpus-per-task will be kept at 8 for this run.
 
+tags:
+  - baseline
+
 steps: 101 # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
 batch_size: 16
 num_workers: 4

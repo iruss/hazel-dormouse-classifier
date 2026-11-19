@@ -325,10 +325,7 @@ try:
         name=f"{config['model_version']}_{config['run_name']}",
         notes=config["run_description"],
         config=config,
-        tags=[
-            config["model_version"],
-            "baseline"
-        ]
+        tags=[config["model_version"]] + config["tags"],
     )
 except Exception as e:
     print(f"Failed to initialise W&B, detailed logging will not be available: {e}")
