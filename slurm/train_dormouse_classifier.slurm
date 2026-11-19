@@ -3,7 +3,7 @@
 #SBATCH --job-name=dormouse-train
 #SBATCH --output=logs/dormouse-train_%j.out
 #SBATCH --error=logs/dormouse-train_%j.err
-#SBATCH --time=10:00:00
+#SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 
