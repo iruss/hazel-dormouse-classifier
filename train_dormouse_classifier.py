@@ -37,6 +37,7 @@ import platform
 import subprocess
 from datetime import datetime
 import shutil
+import argparse
 
 # Debugging
 import pdb
@@ -50,19 +51,35 @@ import pdb
 #    module="opensoundscape"
 #)
 
-# Get configs for relevant model version
-CONFIG_FILE = "configs/dev001.yaml"
+#===================================================================
+#  Get configs for this training run  ================================
+#===================================================================
 
-with open(CONFIG_FILE) as f:
+# Take in config filepath as a command line argument
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--config",
+    required=True,
+    help="Path to YAML config file"
+)
+args = parser.parse_args()
+
+config_filepath = args.config
+
+# Pull in configs
+with open(config_filepath) as f:
     config = yaml.safe_load(f)
 
+# Current model version
 model_v = config["model_version"]
 
 # Set random seed
 #NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging  #TODO: Actually do this if needed!
-torch.manual_seed(0)
-random.seed(0)
-np.random.seed(0)
+random_seed = config["random_seed"]
+
+torch.manual_seed(random_seed)
+random.seed(random_seed)
+np.random.seed(random_seed)
 
 #===================================================================
 #  Load data  ======================================================
@@ -272,7 +289,7 @@ val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model
 metadata = {
     "timestamp": datetime.now().isoformat(),
     "model_version": model_v,
-    "config_file": CONFIG_FILE,
+    "config_file": config_filepath,
     "python_version": platform.python_version(),
     "torch_version": torch.__version__,
     "random_seed": config["random_seed"],
@@ -295,8 +312,8 @@ with open(model_save_dir / "metadata.json", "w") as f:
     json.dump(metadata, f, indent=2)
 
 shutil.copy(
-    CONFIG_FILE,
-    model_save_dir / Path(CONFIG_FILE).name
+    config_filepath,
+    model_save_dir / Path(config_filepath).name
 )
 
 # Set up Weights and Biases model logging

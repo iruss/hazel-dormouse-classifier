@@ -8,6 +8,11 @@
 #SBATCH --mem=16G
 
 # -----------------------------
+# Take in command line args
+# -----------------------------
+CONFIG_FILE=$1
+
+# -----------------------------
 # Activate environment
 # -----------------------------
 source ${HOME}/miniforge3/etc/profile.d/conda.sh
@@ -30,7 +35,9 @@ mkdir -p logs
 echo "Job ID: $SLURM_JOB_ID"
 echo "Host: $(hostname)"
 echo "Started: $(date)"
+echo "Config: $CONFIG_FILE"
 
-python train_dormouse_classifier.py
+python train_dormouse_classifier.py \
+    --config "$CONFIG_FILE"
 
 echo "Finished: $(date)"
