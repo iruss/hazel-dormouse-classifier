@@ -4,7 +4,7 @@
 #SBATCH --output=logs/dormouse-train_%j.out
 #SBATCH --error=logs/dormouse-train_%j.err
 #SBATCH --time=20:00:00
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=32
 #SBATCH --mem=16G
 
 # ----------------------------------------
