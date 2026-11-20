@@ -1,0 +1,19 @@
+model_version: DEV002
+run_name: test_fixes_before_full_baseline_run
+run_description: >
+  Test fixes made to the model training code before doing a full run and
+  assess how long the code takes to run before estimating slurm time needed.
+  Major change is a fix to the function that finds file paths of annotated
+  audio data - realised I broke by adding newlines this when I updated the
+  file paths to the location of the data on Polar. This means dev001 was
+  was only run on Calke Abbey Sample 1 data. This run should include data
+  from Calke Abbey Samples 1 and 2(a-f), 'handpicked dormouse recordings' 
+  from Calke Abbey, Huma's bat recordings and Middleton et al. sound library.
+
+steps: 101 # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
+batch_size: 16
+num_workers: 8
+log_interval: 10
+validation_interval: 10
+save_interval: 10
+random_seed: 0

@@ -1,0 +1,20 @@
+model_version: EXP001
+run_name: reproduce_masters_baseline
+run_description: >
+  Reproduce MSc dormouse call classifier as closely as possible using
+  current OpenSoundscape version. Approximate original 50-epoch training
+  using 25,000 steps (based on 8,000 training samples / batch size of 16
+  = 500 steps per epoch). Primary goal is to establish a baseline for
+  comparison before making experimental changes to the model hyperparameters.
+  No intentional changes to architecture, data, or training procedure.
+
+tags:
+  - baseline
+
+steps: 25001  # Add 1 to ensure final model is validated - validation is only triggered when current step %% validation_interval == 0
+batch_size: 16
+num_workers: 16
+log_interval: 100
+validation_interval: 500  # Equivalent to 1 epoch given 8,000 training samples and batch size of 16
+save_interval: 5000
+random_seed: 0

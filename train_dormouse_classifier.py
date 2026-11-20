@@ -1,6 +1,3 @@
-# Update model version here before running
-model_v = "v33"
-
 # OpenSoundscape imports
 from opensoundscape import Audio, Spectrogram
 from opensoundscape.annotations import BoxedAnnotations
@@ -34,41 +31,93 @@ import wandb
 import random
 from matplotlib import pyplot as plt
 from dotenv import load_dotenv
+import yaml
+import json
+import platform
+import subprocess
+from datetime import datetime
+import shutil
+import argparse
+
+# Debugging
+import pdb
+
+# Consider silencing warnings from opensoundscape caused by old pandas version, once everything's working okay
+#import warnings
+#
+#warnings.filterwarnings(
+#    "ignore",
+#    category=FutureWarning,
+#    module="opensoundscape"
+#)
+
+#===================================================================
+#  Helper functions  ===============================================
+#===================================================================
+
+def list_files(parent_dir, ext):
+    ext = ext.lower().lstrip(".")
+
+    return sorted(
+        str(file)  # convert to string for compatibility with existing downstream code
+        for file in Path(parent_dir).rglob("*")
+        if file.is_file() and file.suffix.lower() == f".{ext}"
+    )
+
+#===================================================================
+#  Get configs for this training run  ==============================
+#===================================================================
+
+# Take in config filepath as a command line argument
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--config",
+    required=True,
+    help="Path to YAML config file"
+)
+args = parser.parse_args()
+
+config_filepath = args.config
+
+# Pull in configs
+with open(config_filepath) as f:
+    config = yaml.safe_load(f)
+
+# Current model version
+model_v = config["model_version"]
 
 # Set random seed
-#NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging
-torch.manual_seed(0)
-random.seed(0)
-np.random.seed(0)
+#NOTE: Will want to remove this for actual model training, but useful for initial coding and debugging  #TODO: Actually do this if needed!
+random_seed = config["random_seed"]
 
-# Get selection table file paths
-# Load local file paths from .env file and create variables
+torch.manual_seed(random_seed)
+random.seed(random_seed)
+np.random.seed(random_seed)
+
+#===================================================================
+#  Load data  ======================================================
+#===================================================================
+
+# Load filepaths and credentials from .env
 load_dotenv()
 
-all_sample_dirs = os.getenv('all_sample_dirs')
-
-# Define function to get .txt file names from comma-separated list of directories
-def list_files(dirs, ext):
-    
-    # Split directories into separate file paths where there are multiple
-    dirs_list = dirs.split(",")
-
-    # Get list of relevant file paths from all specified folders
-    file_paths = [file for x in dirs_list for file in glob.glob(f"{x}/*{ext}")]
-
-    # Return list
-    return file_paths
+# Get selection table file paths
+annotated_data_dir = os.getenv('annotated_data_dir')
 
 # Get list of selection table files
-annotations = list_files(all_sample_dirs, ext='.txt')
+annotations = list_files(annotated_data_dir, ext='.txt')
 
 # Get list of audio files
-audio = list_files(all_sample_dirs, ext='.WAV') + list_files(all_sample_dirs, ext='.wav')
+audio = list_files(annotated_data_dir, ext='.wav')
 
 # Load annotated audio
 labelled_audio = BoxedAnnotations.from_raven_files(
     sorted(annotations), annotation_column="Annotation", audio_files = sorted(audio)
 )
+
+#===================================================================
+#  Create labels for dormouse calls  ===============================
+#===================================================================
 
 # Make a separate copy of labelled audio to filter out non-dormouse annotations before tidying up annotation column
 labelled_audio_hdor = copy.deepcopy(labelled_audio)
@@ -90,13 +139,13 @@ min_label_overlap = 0.01 #0.25  # Arch calls are ~0.01-0.29s long (avg 0.027s) -
 min_label_fraction = 0.5 #0.5  # With 0.5s each annotated call should appear in at least one clip
 # calls_of_interest = ["hdor", "hdor_arch", "hdor_asc", "hdor_wig"]
 
-# Create dataframe of one-hot labels
+# Create dataframe of multi-hot encoded labels
 clip_labels = labelled_audio_hdor.clip_labels(
     clip_duration = clip_duration,
     clip_overlap = clip_overlap,
     min_label_overlap = min_label_overlap,
     min_label_fraction = min_label_fraction,
-    # class_subset = calls_of_interest,  #NOTE: Optional - including for now as example code, but currently includes all as data is already filtered to hdor
+    # class_subset = calls_of_interest,  #NOTE: Optional - including for now as example code, but currently includes all as data is already filtered to all hdor call types
     final_clip = None  # Where length of clip doesn't divide by 1s, discards the final <1s clip
 )
 
@@ -104,7 +153,9 @@ clip_labels = labelled_audio_hdor.clip_labels(
 clip_labels['hdor_all'] = (clip_labels.hdor | clip_labels.hdor_arch | clip_labels.hdor_asc | clip_labels.hdor_wig)
 clip_labels.drop(['hdor', 'hdor_wig'], axis=1, inplace = True)
 
-# Split data into train and test
+#===================================================================
+#  Split data into train and test  =================================
+#===================================================================
 
 # Make indices into columns for easier manipulation
 clip_labels_reset_ind = clip_labels.reset_index()
@@ -122,12 +173,16 @@ train_df.set_index(['file', 'start_time', 'end_time'], inplace=True)
 # upsample positive samples and downsample 'empty' clips to make them less overrepresented
 # The downsampling will also make model training faster
 balanced_train_df = resample(train_df, n_samples_per_class=1000, 
-                             n_samples_without_labels=5000, 
+                             n_samples_without_labels=5000,  #TODO: Check why this doesn't currently include any bat clips
                              random_state=0)
+
+#===================================================================
+#  Create model architecture  ======================================
+#===================================================================
 
 # Initialise model with resnet18 architecture
 classes = clip_labels.columns
-model = cnn.CNN("resnet18", classes, sample_duration=1.0)
+model = cnn.CNN("resnet18", classes, sample_duration=1.0, sample_rate = 192000)
 
 # Use modified loss function, recommended for multi-class model
 use_resample_loss(model, train_df=balanced_train_df)
@@ -135,25 +190,28 @@ use_resample_loss(model, train_df=balanced_train_df)
 # Freeze feature extractor so I'm only training the classification head, to prevent over-fitting
 # model.freeze_feature_extractor()
 
-# Customise preprocessor pipeline
-
-# Get dataframe containing only non-dormouse Calke Abbey clips, with file as the only index
+# Get background noise dataframe containing only non-dormouse Calke Abbey clips, with file as the only index
 background_df = clip_labels.reset_index()
 background_df = background_df[background_df['file'].str.contains("CalkeAbbey")]
 background_df = background_df[background_df['hdor_all'] == False]
 background_df.set_index('file', inplace=True)
 background_df.drop(columns=['start_time', 'end_time'], inplace=True)
 
-# Initialise preprocessor with overlay df containing background noise from Calke Abbey recordings
-my_preprocessor = SpectrogramPreprocessor(sample_duration=1, overlay_df=background_df)
+# Initialise preprocessor with df of overlay samples containing background noise from Calke Abbey recordings
+#TODO: Consider explicitly specifying output width and height for spectrograms here, otherwise output will use original spectrogram dimensions
+#TODO: Looks like I could set bandpass_range here instead of below, to save a line of code?
+#TODO: If wanting to replicate prev results, may need to use use_legacy_spectrogram=True. Option added May 2026 so would presumably apply to masters work summer 2025.
+my_preprocessor = SpectrogramPreprocessor(sample_duration=1, sample_rate=192000, overlay_samples=background_df)
+
+#TODO: Need to review the whole set of augmentations, the list of default actions for SpectrogramPreprocessor seems to have changed
 
 # Remove step to add noise
 # Random noise can have a detrimental effect on model performance, esp where SNR is low (MacIsaac et al., 2024)
-my_preprocessor.remove_action("add_noise")
+my_preprocessor.remove_action("adaptive_random_noise")
 
 # Remove random affine transformations
 # These include rotation and mirroring (Mumuni & Mumuni, 2022) which are likely to distort vocalisations beyond their naturally occurring characteristics, producing unrealistic training data
-my_preprocessor.remove_action("random_affine")
+#my_preprocessor.remove_action("random_affine")  # removed from SpectrogramPreprocessor's default actions list in OpenSoundscape 0.13.0
 
 # Remove random trim audio step as I want all clips to have the same length
 my_preprocessor.remove_action("random_trim_audio")
@@ -163,7 +221,8 @@ my_preprocessor.remove_action("random_trim_audio")
 my_preprocessor.remove_action("rescale")
 
 # Resample all audio to the same sample rate as the Calke Abbey AudioMoths (192kHz)
-my_preprocessor.pipeline.load_audio.set(sample_rate=192000)
+#TODO: Check if still needed as there's now an option to specify this when initialising preprocessor
+#my_preprocessor.pipeline.load_audio.set(sample_rate=192000)
 
 # Set min and max frequency to include ultrasonic range (up to 60kHz)
 # Choosing not to exclude sub-ultrasonic frequencies. Want to include bird songs due to harmonics potentially causing confusion.
@@ -207,37 +266,93 @@ my_preprocessor.insert_action(
 # Replace default preprocessor with my preprocessor
 model.preprocessor = my_preprocessor
 
-# Create folder to save data and model in
-model_save_dir = Path("model_training_checkpoints/model_" + model_v)
+#===================================================================
+#  Save data/metadata and set up logging  ==========================
+#===================================================================
 
-os.mkdir(model_save_dir)
+# Create folder to save data and model in
+model_save_dir = Path("model_training_checkpoints/" + model_v)
+
+if model_save_dir.exists():
+    raise RuntimeError(
+        f"{model_save_dir} already exists"
+    )
+
+model_save_dir.mkdir(parents=True)
 
 # Save train and val datasets to csv
-train_df.to_csv("model_training_checkpoints/model_" + model_v + "/train_df_" + model_v + ".csv")
-balanced_train_df.to_csv("model_training_checkpoints/model_" + model_v + "/balanced_train_df_" + model_v + ".csv")
-val_df.to_csv("model_training_checkpoints/model_" + model_v + "/val_df_" + model_v + ".csv")
+train_df.to_csv("model_training_checkpoints/" + model_v + "/train_df_" + model_v + ".csv")
+balanced_train_df.to_csv("model_training_checkpoints/" + model_v + "/balanced_train_df_" + model_v + ".csv")
+val_df.to_csv("model_training_checkpoints/" + model_v + "/val_df_" + model_v + ".csv")
+
+# Save model metadata and config file
+metadata = {
+    "timestamp": datetime.now().isoformat(),
+    "model_version": model_v,
+    "config_file": config_filepath,
+    "python_version": platform.python_version(),
+    "torch_version": torch.__version__,
+    "random_seed": config["random_seed"],
+    "hostname": platform.node(),
+    "slurm_job_id": os.getenv("SLURM_JOB_ID"),
+}
+
+try:
+    metadata["git_commit"] = (
+        subprocess.check_output(
+            ["git", "rev-parse", "HEAD"]
+        )
+        .decode()
+        .strip()
+    )
+except:
+    metadata["git_commit"] = None
+    
+with open(model_save_dir / "metadata.json", "w") as f:
+    json.dump(metadata, f, indent=2)
+
+shutil.copy(
+    config_filepath,
+    model_save_dir / Path(config_filepath).name
+)
 
 # Set up Weights and Biases model logging
 try:
     wandb.login()
     wandb_session = wandb.init(
-        entity="isobel-russ-ucl",  # replace with your entity/group name
-        project="hazel-dormouse-classifier",
-        name="Train CNN " + model_v,
+        entity="issy-ukceh-uk-centre-for-ecology-hydrology",
+        project="dormouse-classifier",
+        name=f"{config['model_version']}_{config['run_name']}",
+        notes=config["run_description"],
+        config=config,
+        tags=[config["model_version"]] + config["tags"],
     )
-except:  # if wandb.init fails, don't use wandb logging
-    print("failed to create wandb session. wandb session will be None")
+except Exception as e:
+    print(f"Failed to initialise W&B, detailed logging will not be available: {e}")
     wandb_session = None
 
-    # Train model
+# Log slurm job details
+print("===================================")
+print(f"Model version: {model_v}")
+print(f"Host: {platform.node()}")
+print(f"SLURM_JOB_ID: {os.getenv('SLURM_JOB_ID')}")
+print(f"Model device: {model.device}")
+print("===================================")
+
+#===================================================================
+#  Train the model  ================================================
+#===================================================================
+
+# Train model
 model.train(
     balanced_train_df,
     val_df,
-    epochs=50,
-    batch_size=16,
-    log_interval=100,  # log progress every 100 batches
-    num_workers=12,  # parallelized cpu tasks for preprocessing
+    steps=config["steps"],  # Temporarily running a small number of steps - 100*batch size of 16 won't even cover the whole training set
+    batch_size=config["batch_size"],  #TODO: Review batch size. Can too small a batch size cause poor training progress as each weights update is based on a small sample? Should be able to handle larger batches on Polar.
+    log_interval=config["log_interval"],
+    validation_interval=config["validation_interval"],
+    num_workers=config["num_workers"],
     wandb_session=wandb_session,
-    save_interval=1,  # save checkpoint every 10 epochs
-    save_path=model_save_dir,  # location to save checkpoints
+    save_interval=config["save_interval"],
+    save_path=model_save_dir,
 )

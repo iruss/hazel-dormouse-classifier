@@ -1,0 +1,7 @@
+model_version: dev001
+
+steps: 100
+batch_size: 16
+num_workers: 4
+
+random_seed: 0

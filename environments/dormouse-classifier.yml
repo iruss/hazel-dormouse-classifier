@@ -1,0 +1,15 @@
+name: dormouse-classifier
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - pandas=2.3.3  # OpenSoundscape 0.13.0 compatibility
+  - pip
+
+  - pip:
+      - opensoundscape==0.13.0
+      - onnxruntime==1.30.0
+      - wandb==0.31.0
+      - python-dotenv==1.2.4
